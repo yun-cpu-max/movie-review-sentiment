@@ -5,9 +5,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter
 from sklearn.feature_extraction.text import TfidfVectorizer
-from xgboost import XGBClassifier
-from sklearn.model_selection import GridSearchCV
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import RandomizedSearchCV
 from sklearn.metrics import accuracy_score, classification_report
+from scipy.stats import uniform
 import streamlit as st
 import warnings
 warnings.filterwarnings("ignore")
@@ -18,7 +19,7 @@ test_data = pd.read_csv("ratings_test.txt", sep='\t')
 
 # 3. 데이터 전처리 함수 정의
 def preprocess(text):
-    text = re.sub(r"[^가-힣ㄱ-ㅎㅏ-ㅣ\s]", "", str(text))  # 한글, 공백만 남기기
+    text = re.sub(r"[^가-힣ㄱ-ㅎㅏ-ㅣ\s]", "", str(text))
     return text.strip()
 
 train_data['document'] = train_data['document'].fillna("").apply(preprocess)
@@ -31,16 +32,18 @@ y_train = train_data['label']
 X_test = vectorizer.transform(test_data['document'])
 y_test = test_data['label']
 
-# 5. 하이퍼파라미터 튜닝 (XGBoost)
-param_grid = {
-    'n_estimators': [100, 200],
-    'max_depth': [3, 5],
-    'learning_rate': [0.1, 0.3]
+# 5. RandomizedSearchCV로 하이퍼파라미터 튜닝
+param_dist = {
+    'C': uniform(0.01, 10),
+    'solver': ['liblinear', 'saga']
 }
-xgb = XGBClassifier(use_label_encoder=False, eval_metric='logloss', verbosity=0)
-grid = GridSearchCV(xgb, param_grid, cv=3, scoring='accuracy', n_jobs=-1)
-grid.fit(X_train, y_train)
-model = grid.best_estimator_
+
+logreg = LogisticRegression(max_iter=1000)
+rand_search = RandomizedSearchCV(logreg, param_distributions=param_dist, n_iter=20, 
+                                 scoring='accuracy', cv=5, random_state=42, n_jobs=-1)
+rand_search.fit(X_train, y_train)
+
+model = rand_search.best_estimator_
 y_pred = model.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
 
@@ -68,25 +71,16 @@ def main():
         import matplotlib.font_manager as fm
         try:
             plt.rcParams['font.family'] = 'Malgun Gothic'
-            plt.rcParams['axes.unicode_minus'] = False
         except:
             try:
                 plt.rcParams['font.family'] = 'AppleGothic'
-                plt.rcParams['axes.unicode_minus'] = False
             except:
-                try:
-                    plt.rcParams['font.family'] = 'NanumGothic'
-                    plt.rcParams['axes.unicode_minus'] = False
-                except:
-                    st.warning("한글 폰트 설정에 실패했습니다.")
+                st.warning("한글 폰트 설정에 실패했습니다.")
+        plt.rcParams['axes.unicode_minus'] = False
 
-        st.write("✅ 데이터 개수:")
-        st.write(train_data.shape)
+        st.write("✅ 데이터 개수:", train_data.shape)
+        st.write("✅ 결측치 개수:", train_data.isnull().sum())
 
-        st.write("✅ 결측치 개수:")
-        st.write(train_data.isnull().sum())
-
-        # 가장 많이 등장한 단어
         all_words = ' '.join(train_data['document']).split()
         common_words = Counter(all_words).most_common(20)
         st.write("✅ 가장 많이 등장한 단어 (상위 20개):")
@@ -103,7 +97,7 @@ def main():
     elif menu == "모델 정보":
         st.subheader("모델 성능 및 하이퍼파라미터")
         st.write("✅ 테스트 정확도:", accuracy)
-        st.write("✅ 최적 하이퍼파라미터:", grid.best_params_)
+        st.write("✅ 최적 하이퍼파라미터:", rand_search.best_params_)
         st.text("📋 분류 리포트:")
         st.text(classification_report(y_test, y_pred, target_names=["부정", "긍정"]))
 
