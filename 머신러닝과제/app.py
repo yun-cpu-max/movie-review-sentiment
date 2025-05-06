@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
+from xgboost import XGBClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import accuracy_score, classification_report
 import streamlit as st
@@ -31,13 +31,14 @@ y_train = train_data['label']
 X_test = vectorizer.transform(test_data['document'])
 y_test = test_data['label']
 
-# 5. 하이퍼파라미터 튜닝
+# 5. 하이퍼파라미터 튜닝 (XGBoost)
 param_grid = {
-    'C': [0.01, 0.1, 1, 10],
-    'penalty': ['l2'],
-    'solver': ['lbfgs']
+    'n_estimators': [100, 200],
+    'max_depth': [3, 5],
+    'learning_rate': [0.1, 0.3]
 }
-grid = GridSearchCV(LogisticRegression(max_iter=1000), param_grid, cv=3, scoring='accuracy', n_jobs=-1)
+xgb = XGBClassifier(use_label_encoder=False, eval_metric='logloss', verbosity=0)
+grid = GridSearchCV(xgb, param_grid, cv=3, scoring='accuracy', n_jobs=-1)
 grid.fit(X_train, y_train)
 model = grid.best_estimator_
 y_pred = model.predict(X_test)
@@ -63,7 +64,7 @@ def main():
     elif menu == "EDA":
         st.subheader("데이터 EDA")
 
-        # ** 한글 폰트 설정 **
+        # 한글 폰트 설정
         import matplotlib.font_manager as fm
         try:
             plt.rcParams['font.family'] = 'Malgun Gothic'
@@ -77,8 +78,7 @@ def main():
                     plt.rcParams['font.family'] = 'NanumGothic'
                     plt.rcParams['axes.unicode_minus'] = False
                 except:
-                    st.warning("한글 폰트 설정에 실패했습니다. 시스템에 한글 폰트가 설치되어 있는지 확인하고, 설치된 폰트 이름으로 'plt.rcParams[\'font.family\']' 값을 변경해주세요.")
-        # ** 폰트 설정 끝 **
+                    st.warning("한글 폰트 설정에 실패했습니다.")
 
         st.write("✅ 데이터 개수:")
         st.write(train_data.shape)
@@ -86,9 +86,7 @@ def main():
         st.write("✅ 결측치 개수:")
         st.write(train_data.isnull().sum())
 
-        # ** '레이블 분포' 관련 코드 제거됨 **
-
-        # ✅ 가장 많이 등장한 단어 (상위 20개): 바로 표시
+        # 가장 많이 등장한 단어
         all_words = ' '.join(train_data['document']).split()
         common_words = Counter(all_words).most_common(20)
         st.write("✅ 가장 많이 등장한 단어 (상위 20개):")
